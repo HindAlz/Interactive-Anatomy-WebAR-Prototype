@@ -2,15 +2,13 @@
 
 A browser based augmented reality prototype for exploring heart and body anatomy using custom visual markers, 3D models, and interactive audio labels.
 
-The project explores how marker-based AR can make anatomical structures easier to inspect through a web interface. It combines camera tracking with labeled models and spoken explanations, without requiring a dedicated mobile application.
-
-**Status:** Educational prototype. Marker-based viewing is the primary demonstration; broader device testing and usability evaluation remain future work.
+The project explores how marker based AR can make anatomical structures easier to inspect through a web interface. It combines camera tracking with labeled models and spoken explanations, without requiring a dedicated mobile application.
 
 ## Author and Contribution
 
 Developed independently by [HindAlz](https://github.com/HindAlz).
 
-I designed and developed the prototype, including the interface, AR scene, marker tracking integration, model presentation, anatomical labels, and interaction controls. The project uses A-Frame and AR.js as its underlying libraries.
+I designed and developed the prototype, including the interface, AR scene, marker tracking integration, model presentation, anatomical labels, and interaction controls. The project uses A Frame and AR.js as its underlying libraries.
 
 ## Features
 
@@ -62,7 +60,13 @@ The application uses two custom pattern files:
 | Heart | `WebAr/heart-marker.patt` |
 | Body | `WebAr/marker.patt` |
 
-These `.patt` files contain tracking data, not printable images. The corresponding visual markers are required; a generic Hiro marker will not substitute for them. Clearly identified printable markers still need to be documented so others can reproduce the demonstration.
+Print the matching marker or display it on a second screen. Keep its full black border visible and point the camera at it.
+
+#### Body and Heart Marker
+
+<img src="WebAr/markers.png" alt="Body and heart tracking marker" width="320">
+
+[Open the full-size body marker](WebAr/pattern-im.png)
 
 ## Technology
 
@@ -95,4 +99,10 @@ The application runs on the client side and does not require an application back
 
 Built with [A-Frame](https://aframe.io/) and [AR.js](https://github.com/AR-js-org/AR.js).
 
-Sources, creators, and license details for the bundled models, audio, and marker/calibration assets are pending documentation.
+
+## Examples
+
+<img src="WebAr/heart eg.jpg" alt="heart example" width="320">
+<img src="WebAr/body eg.jpg" alt="body example" width="320">
+
+
