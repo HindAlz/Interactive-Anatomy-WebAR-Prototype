@@ -76,80 +76,66 @@
         box-shadow: 0 6px 14px rgba(0, 255, 225, 0.5);
       }
     </style>
-  </head>
-
-  <body>
-    <!-- Start Overlay -->
-    <div id="startOverlay">
-      <h1>Welcome to Anatomy AR</h1>
-      <p>📱 Point your phone at the printed marker</p>
-      <p>🌀 Use one finger to rotate the model</p>
-      <button id="startButton" class="start-button">Tap to Start</button>
-    </div>
-    <div id="uiPanel" style="position: absolute; top: 10px; left: 10px; z-index: 9999; display: flex; flex-direction: column; gap: 10px;">
-      <button onclick="showMarkerInstructions()" style="padding: 10px 20px; font-size: 16px;">Marker Mode</button>
-
-    </div>
-    
-    <!-- Scene -->
-    <a-scene
-      embedded
-      arjs="sourceType: webcam; debugUIEnabled: false; cameraParametersUrl: camera_para.dat"
-    >
-      <a-assets>
-        <a-asset-item id="heartModelGLB" src="heart.glb"></a-asset-item>
-        <a-asset-item id="bodyGLB" src="body.glb"></a-asset-item>
-      </a-assets>
-      <!-- Bright ambient light -->
-      <a-entity light="type: ambient; color: #ffffff; intensity: 2.5"></a-entity>
-
-      <!-- Directional light to mimic sunlight -->
-      <a-entity light="type: directional; color: #ffffff; intensity: 2" position="1 3 2"></a-entity>
-
-      <!-- Camera -->
-      <a-entity id="mainCamera" camera cursor="rayOrigin: mouse" raycaster="objects: .clickable"></a-entity>
-
-      <!-- Marker 1: Body -->
-      <a-marker id="customMarker" type="pattern" preset="custom" url="marker.patt" emitevents="true">
-        <a-entity id="markerBody" gltf-model="body.glb" scale="0.03 0.03 0.03" rotation="-90 0 0" visible="false" drag-rotate arrow-move>
-          <!-- Labels for Body -->
-          <a-text value="Liver" position="4 1 -8" rotation="0 180 0" scale="6 6 6" color="green"  face-camera material="side: double"></a-text>
-          <a-text value="Stomach" position="-3 0 -8" rotation="0 180 0" scale="6 6 6" color="green"  face-camera material="side: double"></a-text>
-          <a-text value="ribcage" position="0 11 -9" rotation="0 180 0" scale="6 6 6" color="green"  face-camera material="side: double"></a-text>
-        </a-entity>
-      </a-marker>
-
-      <!-- Marker 2: Heart -->
-      <a-marker id="heartMarker" type="pattern" preset="custom" url="heart-marker.patt" emitevents="true">
-        <a-entity id="markerHeart" gltf-model="heart.glb" scale="0.05 0.05 0.05" rotation="-90 0 0" visible="false" drag-rotate arrow-move>
-          <a-text value="Aorta" position="3 0 -12" scale="6 6 6" color="blue"   face-camera material="side: double"></a-text>
-          <a-text value="Right Ventricle" position="0 0 15" scale="6 6 6" color="blue" face-camera material="side: double"></a-text>
-        </a-entity>
-      </a-marker>
-      
-    </a-scene>
-
     <script>
+      const trackedMarkers = { customMarker: false, heartMarker: false };
+      let activeNarration = null;
+      let playbackRequest = 0;
+
+      function setAudioStatus(message) {
+        const status = document.getElementById('audioStatus');
+        status.textContent = message;
+        status.hidden = !message;
+      }
+
+      function stopNarration(markerId) {
+        if (!activeNarration || (markerId && activeNarration.markerId !== markerId)) return;
+        const previous = activeNarration.audio;
+        activeNarration = null;
+        playbackRequest += 1;
+        previous.pause();
+        previous.currentTime = 0;
+        setAudioStatus('');
+      }
+
+      function playMarkerAudio(audioId, markerId) {
+        if (!trackedMarkers[markerId]) return;
+        const audio = document.getElementById(audioId);
+        if (!audio) return;
+        stopNarration();
+        const request = ++playbackRequest;
+        activeNarration = { audio, markerId };
+        audio.currentTime = 0;
+        setAudioStatus('');
+        // Called directly from the label click so playback has a user gesture.
+        audio.play().catch(() => {
+          if (request !== playbackRequest) return;
+          activeNarration = null;
+          setAudioStatus('Audio could not play. Check your connection and tap the label again.');
+        });
+      }
+
       function showMarkerInstructions() {
         alert('Point your camera at the matching heart or body marker.');
       }
 
+      document.addEventListener('DOMContentLoaded', function () {
       document.getElementById('startButton').addEventListener('click', function () {
         document.getElementById('startOverlay').style.display = 'none';
       });
 
-      document.addEventListener('DOMContentLoaded', function () {
+
         // Body Marker Events
         const bodyMarker = document.getElementById('customMarker');
         const markerBody = document.getElementById('markerBody');
 
         bodyMarker.addEventListener('markerFound', () => {
-          console.log('Body marker found');
+          trackedMarkers.customMarker = true;
           markerBody.setAttribute('visible', true);
         });
 
         bodyMarker.addEventListener('markerLost', () => {
-          console.log('Body marker lost');
+          trackedMarkers.customMarker = false;
+          stopNarration('customMarker');
           markerBody.setAttribute('visible', false);
         });
 
@@ -158,12 +144,13 @@
         const markerHeart = document.getElementById('markerHeart');
 
         heartMarker.addEventListener('markerFound', () => {
-          console.log('Heart marker found');
+          trackedMarkers.heartMarker = true;
           markerHeart.setAttribute('visible', true);
         });
 
         heartMarker.addEventListener('markerLost', () => {
-          console.log('Heart marker lost');
+          trackedMarkers.heartMarker = false;
+          stopNarration('heartMarker');
           markerHeart.setAttribute('visible', false);
         });
       });
@@ -255,5 +242,86 @@ AFRAME.registerComponent('arrow-move', {
   }
 });
     </script>
+  </head>
+
+  <body>
+    <!-- Start Overlay -->
+    <div id="startOverlay">
+      <h1>Welcome to Anatomy AR</h1>
+      <p>📱 Point your phone at the printed marker</p>
+      <p>🌀 Use one finger to rotate the model</p>
+      <p>🔊 Tap an organ label to hear its explanation</p>
+      <button id="startButton" class="start-button">Tap to Start</button>
+    </div>
+    <div id="uiPanel" style="position: absolute; top: 10px; left: 10px; z-index: 9999; display: flex; flex-direction: column; gap: 10px;">
+
+    </div>
+    
+    <p id="audioStatus" role="status" aria-live="polite" style="position: fixed; bottom: 16px; left: 16px; right: 16px; z-index: 9999; color: white; background: #222; padding: 8px; pointer-events: none;" hidden></p>
+    <audio id="aortaAudio" src="audio/aorta.mp3" preload="none"></audio>
+    <audio id="ventricleAudio" src="audio/ventricle.mp3" preload="none"></audio>
+    <audio id="liverAudio" src="audio/liver.mp3" preload="none"></audio>
+    <audio id="stomachAudio" src="audio/stomach.mp3" preload="none"></audio>
+    <audio id="ribcageAudio" src="audio/ribcage.mp3" preload="none"></audio>
+
+    <!-- Scene -->
+    <a-scene
+      embedded
+      arjs="sourceType: webcam; debugUIEnabled: false; cameraParametersUrl: camera_para.dat"
+    >
+      <a-assets>
+        <a-asset-item id="heartModelGLB" src="heart.glb"></a-asset-item>
+        <a-asset-item id="bodyGLB" src="body.glb"></a-asset-item>
+      </a-assets>
+      <!-- Bright ambient light -->
+      <a-entity light="type: ambient; color: #ffffff; intensity: 2.5"></a-entity>
+
+      <!-- Directional light to mimic sunlight -->
+      <a-entity light="type: directional; color: #ffffff; intensity: 2" position="1 3 2"></a-entity>
+
+      <!-- Camera -->
+      <a-entity id="mainCamera" camera cursor="rayOrigin: mouse" raycaster="objects: .clickable"></a-entity>
+
+      <!-- Marker 1: Body -->
+      <a-marker id="customMarker" type="pattern" preset="custom" url="marker.patt" emitevents="true">
+        <a-entity id="markerBody" gltf-model="body.glb" scale="0.03 0.03 0.03" rotation="-90 0 0" visible="false" drag-rotate arrow-move>
+          <!-- Labels for Body -->
+          <a-entity position="4 1 -8" rotation="0 180 0" scale="6 6 6"   face-camera class="clickable"
+            geometry="primitive: plane; width: 3; height: 0.65"
+            material="color: white; opacity: 0.9; side: double"
+            text="value: Liver; align: center; width: 3; color: green"
+            onclick="playMarkerAudio('liverAudio', 'customMarker')"></a-entity>
+          <a-entity position="-3 0 -8" rotation="0 180 0" scale="6 6 6"   face-camera class="clickable"
+            geometry="primitive: plane; width: 3; height: 0.65"
+            material="color: white; opacity: 0.9; side: double"
+            text="value: Stomach; align: center; width: 3; color: green"
+            onclick="playMarkerAudio('stomachAudio', 'customMarker')"></a-entity>
+          <a-entity position="0 11 -9" rotation="0 180 0" scale="6 6 6"   face-camera class="clickable"
+            geometry="primitive: plane; width: 3; height: 0.65"
+            material="color: white; opacity: 0.9; side: double"
+            text="value: ribcage; align: center; width: 3; color: green"
+            onclick="playMarkerAudio('ribcageAudio', 'customMarker')"></a-entity>
+        </a-entity>
+      </a-marker>
+
+      <!-- Marker 2: Heart -->
+      <a-marker id="heartMarker" type="pattern" preset="custom" url="heart-marker.patt" emitevents="true">
+        <a-entity id="markerHeart" gltf-model="heart.glb" scale="0.05 0.05 0.05" rotation="-90 0 0" visible="false" drag-rotate arrow-move>
+          <a-entity position="3 0 -12" scale="6 6 6"    face-camera class="clickable"
+            geometry="primitive: plane; width: 3; height: 0.65"
+            material="color: white; opacity: 0.9; side: double"
+            text="value: Aorta; align: center; width: 3; color: blue"
+            onclick="playMarkerAudio('aortaAudio', 'heartMarker')"></a-entity>
+          <a-entity position="0 0 15" scale="6 6 6"  face-camera class="clickable"
+            geometry="primitive: plane; width: 3; height: 0.65"
+            material="color: white; opacity: 0.9; side: double"
+            text="value: Right Ventricle; align: center; width: 3; color: blue"
+            onclick="playMarkerAudio('ventricleAudio', 'heartMarker')"></a-entity>
+        </a-entity>
+      </a-marker>
+      
+    </a-scene>
+
+
   </body>
 </html>
