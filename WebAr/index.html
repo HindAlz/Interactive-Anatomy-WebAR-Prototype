@@ -5,6 +5,34 @@
     <script src="https://aframe.io/releases/1.2.0/aframe.min.js"></script>
     <script src="https://cdn.jsdelivr.net/gh/AR-js-org/AR.js/aframe/build/aframe-ar.min.js"></script>
     <style>
+      #labelLayer {
+        position: fixed;
+        inset: 0;
+        z-index: 100;
+        pointer-events: none;
+      }
+      .audio-label {
+        position: absolute;
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        min-height: 44px;
+        padding: 8px 12px;
+        border: 2px solid currentColor;
+        border-radius: 10px;
+        background: rgba(255, 255, 255, 0.96);
+        box-shadow: 0 2px 8px #0004;
+        font: 600 14px/1.2 'Segoe UI', sans-serif;
+        white-space: nowrap;
+        transform: translate(-50%, -50%);
+        pointer-events: auto;
+        touch-action: manipulation;
+        cursor: pointer;
+      }
+      .audio-label[hidden] { display: none; }
+      .audio-label:focus-visible { outline: 3px solid #00ffe1; outline-offset: 3px; }
+      .audio-label svg { width: 18px; height: 18px; flex: none; }
+
       body {
         margin: 0;
         overflow: hidden;
@@ -78,6 +106,7 @@
     </style>
     <script>
       const trackedMarkers = { customMarker: false, heartMarker: false };
+      let experienceStarted = false;
       let activeNarration = null;
       let playbackRequest = 0;
 
@@ -121,6 +150,7 @@
       document.addEventListener('DOMContentLoaded', function () {
       document.getElementById('startButton').addEventListener('click', function () {
         document.getElementById('startOverlay').style.display = 'none';
+        experienceStarted = true;
       });
 
 
@@ -155,17 +185,62 @@
         });
       });
 
-      AFRAME.registerComponent('face-camera', {
-  tick: function () {
-    const camera = document.querySelector('[camera]');
-    if (!camera) return;
+      // The visible label IS the native button. Its screen position comes from
+      // the marker anchor, avoiding a separate WebGL cursor/hit target.
+      AFRAME.registerComponent('audio-label', {
+        schema: {
+          label: { type: 'string' },
+          audio: { type: 'string' },
+          marker: { type: 'string' },
+          color: { default: '#166534' }
+        },
+        init: function () {
+          this.worldPosition = new THREE.Vector3();
+          this.button = document.createElement('button');
+          this.button.type = 'button';
+          this.button.className = 'audio-label';
+          this.button.hidden = true;
+          this.button.style.color = this.data.color;
+          this.button.setAttribute('aria-label', `Play audio: ${this.data.label}`);
+          this.button.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 5 6 9H3v6h3l5 4V5Z"/><path d="M15 8a6 6 0 0 1 0 8m3-11a10 10 0 0 1 0 14"/></svg>';
+          const name = document.createElement('span');
+          name.textContent = this.data.label;
+          this.button.appendChild(name);
+          for (const eventName of ['pointerdown', 'mousedown', 'touchstart']) {
+            this.button.addEventListener(eventName, (event) => event.stopPropagation());
+          }
+          this.button.addEventListener('click', (event) => {
+            event.stopPropagation();
+            playMarkerAudio(this.data.audio, this.data.marker);
+          });
+          document.getElementById('labelLayer').appendChild(this.button);
+        },
+        tick: function () {
+          const scene = this.el.sceneEl;
+          const camera = scene.camera;
+          const canvas = scene.canvas;
+          this.button.hidden = true;
+          if (!experienceStarted || !trackedMarkers[this.data.marker] || !camera || !canvas) return;
+          for (let parent = this.el.object3D; parent; parent = parent.parent) {
+            if (!parent.visible) return;
+          }
+          camera.updateMatrixWorld(true);
+          this.el.object3D.getWorldPosition(this.worldPosition);
+          this.worldPosition.project(camera);
+          const point = this.worldPosition;
+          if (![point.x, point.y, point.z].every(Number.isFinite) ||
+              point.z < -1 || point.z > 1 || Math.abs(point.x) > 1 || Math.abs(point.y) > 1) return;
+          const rect = canvas.getBoundingClientRect();
+          if (!rect.width || !rect.height) return;
+          this.button.style.left = `${rect.left + (point.x + 1) * rect.width / 2}px`;
+          this.button.style.top = `${rect.top + (1 - point.y) * rect.height / 2}px`;
+          this.button.hidden = false;
+        },
+        remove: function () {
+          if (this.button) this.button.remove();
+        }
+      });
 
-    const object3D = this.el.object3D;
-    const camPosition = new THREE.Vector3();
-    camera.object3D.getWorldPosition(camPosition);
-    object3D.lookAt(camPosition);
-  }
-});
       // Register the rotation and movement components to all models that need them
       AFRAME.registerComponent('drag-rotate', {
         schema: { speed: { default: 0.15 } },
@@ -254,9 +329,11 @@ AFRAME.registerComponent('arrow-move', {
       <button id="startButton" class="start-button">Tap to Start</button>
     </div>
     <div id="uiPanel" style="position: absolute; top: 10px; left: 10px; z-index: 9999; display: flex; flex-direction: column; gap: 10px;">
+      <button onclick="showMarkerInstructions()" style="padding: 10px 20px; font-size: 16px;">Marker Mode</button>
 
     </div>
     
+    <div id="labelLayer"></div>
     <p id="audioStatus" role="status" aria-live="polite" style="position: fixed; bottom: 16px; left: 16px; right: 16px; z-index: 9999; color: white; background: #222; padding: 8px; pointer-events: none;" hidden></p>
     <audio id="aortaAudio" src="audio/aorta.mp3" preload="none"></audio>
     <audio id="ventricleAudio" src="audio/ventricle.mp3" preload="none"></audio>
@@ -280,43 +357,23 @@ AFRAME.registerComponent('arrow-move', {
       <a-entity light="type: directional; color: #ffffff; intensity: 2" position="1 3 2"></a-entity>
 
       <!-- Camera -->
-      <a-entity id="mainCamera" camera cursor="rayOrigin: mouse" raycaster="objects: .clickable"></a-entity>
+      <a-entity id="mainCamera" camera></a-entity>
 
       <!-- Marker 1: Body -->
       <a-marker id="customMarker" type="pattern" preset="custom" url="marker.patt" emitevents="true">
-        <a-entity id="markerBody" gltf-model="body.glb" scale="0.03 0.03 0.03" rotation="-90 0 0" visible="false" drag-rotate arrow-move>
+        <a-entity id="markerBody" gltf-model="body.glb" scale="0.06 0.06 0.06" rotation="-90 0 0" visible="false" drag-rotate arrow-move>
           <!-- Labels for Body -->
-          <a-entity position="4 1 -8" rotation="0 180 0" scale="6 6 6"   face-camera class="clickable"
-            geometry="primitive: plane; width: 3; height: 0.65"
-            material="color: white; opacity: 0.9; side: double"
-            text="value: Liver; align: center; width: 3; color: green"
-            onclick="playMarkerAudio('liverAudio', 'customMarker')"></a-entity>
-          <a-entity position="-3 0 -8" rotation="0 180 0" scale="6 6 6"   face-camera class="clickable"
-            geometry="primitive: plane; width: 3; height: 0.65"
-            material="color: white; opacity: 0.9; side: double"
-            text="value: Stomach; align: center; width: 3; color: green"
-            onclick="playMarkerAudio('stomachAudio', 'customMarker')"></a-entity>
-          <a-entity position="0 11 -9" rotation="0 180 0" scale="6 6 6"   face-camera class="clickable"
-            geometry="primitive: plane; width: 3; height: 0.65"
-            material="color: white; opacity: 0.9; side: double"
-            text="value: ribcage; align: center; width: 3; color: green"
-            onclick="playMarkerAudio('ribcageAudio', 'customMarker')"></a-entity>
+          <a-entity position="4 1 -8" audio-label="label: Liver; audio: liverAudio; marker: customMarker; color: #166534"></a-entity>
+          <a-entity position="-3 0 -8" audio-label="label: Stomach; audio: stomachAudio; marker: customMarker; color: #166534"></a-entity>
+          <a-entity position="0 11 -9" audio-label="label: Ribcage; audio: ribcageAudio; marker: customMarker; color: #166534"></a-entity>
         </a-entity>
       </a-marker>
 
       <!-- Marker 2: Heart -->
       <a-marker id="heartMarker" type="pattern" preset="custom" url="heart-marker.patt" emitevents="true">
         <a-entity id="markerHeart" gltf-model="heart.glb" scale="0.05 0.05 0.05" rotation="-90 0 0" visible="false" drag-rotate arrow-move>
-          <a-entity position="3 0 -12" scale="6 6 6"    face-camera class="clickable"
-            geometry="primitive: plane; width: 3; height: 0.65"
-            material="color: white; opacity: 0.9; side: double"
-            text="value: Aorta; align: center; width: 3; color: blue"
-            onclick="playMarkerAudio('aortaAudio', 'heartMarker')"></a-entity>
-          <a-entity position="0 0 15" scale="6 6 6"  face-camera class="clickable"
-            geometry="primitive: plane; width: 3; height: 0.65"
-            material="color: white; opacity: 0.9; side: double"
-            text="value: Right Ventricle; align: center; width: 3; color: blue"
-            onclick="playMarkerAudio('ventricleAudio', 'heartMarker')"></a-entity>
+          <a-entity position="3 0 -12" audio-label="label: Aorta; audio: aortaAudio; marker: heartMarker; color: #1d4ed8"></a-entity>
+          <a-entity position="0 0 15" audio-label="label: Right Ventricle; audio: ventricleAudio; marker: heartMarker; color: #1d4ed8"></a-entity>
         </a-entity>
       </a-marker>
       
